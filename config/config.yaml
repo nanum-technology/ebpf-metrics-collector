@@ -1,0 +1,86 @@
+# config/config.yaml
+
+# 노드 정보
+node_id: "agent-001"  # 커맨드 라인 인자로도 받을 수 있음
+
+# InfluxDB 설정
+influxdb:
+  url: "http://192.0.2.226:8086"
+  token: "<INFLUXDB_TOKEN>"
+  org: "nanum"
+  bucket: "ebpf_metrics"
+  timeout: 30
+  # 쓰기 실패 재시도 — 횟수 제한 (1·2·4초 백오프). 무한 재시도는 ISSUE-036(메모리 폭주) 재발이라 두지 않는다
+  retry_attempts: 3
+  retry_backoff_sec: 1
+  # 스키마 검증 (src/storage/influxdb_schema.py 가 기준)
+  #   off    : 검증 안 함
+  #   warn   : 스키마에 없는 measurement/태그/필드를 로그로만 남김
+  #   strict : 없는 태그·필드는 떼어내고, 없는 measurement 는 버림 (타입 불일치는 기록만)
+  schema_mode: "strict"
+
+# 파일 저장소 설정
+storage:
+  base_path: "/root/eBPF/data"
+  # JSONL 파일 분할 방식
+  #   per_cycle : (기본/기존 호환) 수집 주기마다 새 파일 1개 — KETI 기존 연동 포맷
+  #   hourly    : 날짜폴더 + 시간(1h) 단위로 한 파일에 누적 — 파일 수 급감(권장)
+  #   daily     : 날짜폴더 + 일(1d) 단위로 한 파일에 누적 — 파일 수 최소
+  json_split: "hourly"
+  json_retention_days: 7
+  parquet_retention_days: 30
+  compression_level: 9
+
+# 수집 간격 (초)
+collection_interval: 10
+
+# 수집기 설정
+collectors:
+  network:
+    enabled: true
+    interfaces: ["eth0", "eth1"]
+    protocols: ["TCP", "UDP", "ICMP"]
+    # DDoS 판정 (규칙 기반) — 한 주기의 수신 패킷/초 또는 수신 출발지 IP 종류 수가 넘으면
+    # 노드 요약 레코드(protocol=ALL) 의 ddos_detected=true. 값은 노드 트래픽을 보고 조정한다
+    ddos:
+      inbound_pps_threshold: 20000
+      unique_src_threshold: 500
+
+  syscall:
+    enabled: true
+    tracked_calls: ["read", "write", "open", "close"]
+
+  cpu:
+    enabled: true
+    per_core: true
+
+  memory:
+    enabled: true
+    track_oom: true
+
+  filesystem:
+    enabled: true
+    mount_points: ["/", "/data"]
+
+  process:
+    enabled: true
+    min_cpu_percent: 1.0
+
+  container:
+    enabled: true
+    runtime: "docker"  # or "containerd"
+
+  gpu:
+    enabled: false
+    collect_interval: 5  # GPU는 5초마다 수집 (더 빠른 변화 감지)
+
+# Grafana 설정 (참고용)
+grafana:
+  url: "http://192.0.2.226:3000"
+  datasource: "InfluxDB"
+
+# 로깅
+logging:
+  level: "INFO"
+  format: "json"
+  output: "stdout"

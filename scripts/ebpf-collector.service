@@ -1,0 +1,17 @@
+[Unit]
+Description=eBPF Metrics Collector
+After=network.target influxdb.service
+Wants=influxdb.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/eBPF/ebpf-metrics-collector2
+ExecStart=/root/eBPF/ebpf-metrics-collector2/venv/bin/python3 main.py
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,233 @@
+{
+  "title": "eBPF Metrics Collector",
+  "uid": "ebpf-metrics-main",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+
+    { "type": "row", "title": "CPU", "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 }, "id": 100, "collapsed": false },
+
+    {
+      "id": 1, "title": "Context Switches", "type": "timeseries",
+      "gridPos": { "x": 0, "y": 1, "w": 12, "h": 8 },
+      "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB}" },
+      "targets": [{
+        "refId": "A",
+        "query": "from(bucket: \"ebpf_metrics\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"cpu_metrics\")\n  |> filter(fn: (r) => r._field == \"context_switches\")\n  |> aggregateWindow(every: v.windowPeriod, fn: sum, createEmpty: false)\n  |> yield(name: \"context_switches\")"
+      }],
+      "options": { "legend": { "displayMode": "list" } }
+    },
+
+    {
+      "id": 2, "title": "IRQ Count", "type": "timeseries",
+      "gridPos": { "x": 12, "y": 1, "w": 12, "h": 8 },
+      "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB}" },
+      "targets": [{
+        "refId": "A",
+        "query": "from(bucket: \"ebpf_metrics\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"cpu_metrics\")\n  |> filter(fn: (r) => r._field == \"irq_count\")\n  |> aggregateWindow(every: v.windowPeriod, fn: sum, createEmpty: false)\n  |> yield(name: \"irq_count\")"
+      }]
+    },
+
+    { "type": "row", "title": "Memory", "gridPos": { "x": 0, "y": 9, "w": 24, "h": 1 }, "id": 101, "collapsed": false },
+
+    {
+      "id": 3, "title": "Memory Usage (%)", "type": "timeseries",
+      "gridPos": { "x": 0, "y": 10, "w": 8, "h": 8 },
+      "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB}" },
+      "fieldConfig": {
+        "defaults": { "unit": "percent", "min": 0, "max": 100 }
+      },
+      "targets": [{
+        "refId": "A",
+        "query": "from(bucket: \"ebpf_metrics\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"memory_metrics\")\n  |> filter(fn: (r) => r._field == \"usage_percent\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> yield(name: \"usage_percent\")"
+      }]
+    },
+
+    {
+      "id": 4, "title": "Memory Used / Total", "type": "timeseries",
+      "gridPos": { "x": 8, "y": 10, "w": 8, "h": 8 },
+      "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB}" },
+      "fieldConfig": { "defaults": { "unit": "bytes" } },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"ebpf_metrics\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"memory_metrics\")\n  |> filter(fn: (r) => r._field == \"used_bytes\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> yield(name: \"used_bytes\")"
+        },
+        {
+          "refId": "B",
+          "query": "from(bucket: \"ebpf_metrics\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"memory_metrics\")\n  |> filter(fn: (r) => r._field == \"total_bytes\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> yield(name: \"total_bytes\")"
+        }
+      ]
+    },
+
+    {
+      "id": 5, "title": "Page Faults & OOM", "type": "timeseries",
+      "gridPos": { "x": 16, "y": 10, "w": 8, "h": 8 },
+      "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB}" },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"ebpf_metrics\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"memory_metrics\")\n  |> filter(fn: (r) => r._field == \"page_faults\")\n  |> aggregateWindow(every: v.windowPeriod, fn: sum, createEmpty: false)\n  |> yield(name: \"page_faults\")"
+        },
+        {
+          "refId": "B",
+          "query": "from(bucket: \"ebpf_metrics\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"memory_metrics\")\n  |> filter(fn: (r) => r._field == \"oom_count\")\n  |> aggregateWindow(every: v.windowPeriod, fn: sum, createEmpty: false)\n  |> yield(name: \"oom_count\")"
+        }
+      ]
+    },
+
+    { "type": "row", "title": "Network", "gridPos": { "x": 0, "y": 18, "w": 24, "h": 1 }, "id": 102, "collapsed": false },
+
+    {
+      "id": 6, "title": "Packet Count", "type": "timeseries",
+      "gridPos": { "x": 0, "y": 19, "w": 8, "h": 8 },
+      "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB}" },
+      "targets": [{
+        "refId": "A",
+        "query": "from(bucket: \"ebpf_metrics\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"network_metrics\")\n  |> filter(fn: (r) => r._field == \"packet_count\")\n  |> aggregateWindow(every: v.windowPeriod, fn: sum, createEmpty: false)\n  |> yield(name: \"packet_count\")"
+      }]
+    },
+
+    {
+      "id": 7, "title": "Byte Count", "type": "timeseries",
+      "gridPos": { "x": 8, "y": 19, "w": 8, "h": 8 },
+      "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB}" },
+      "fieldConfig": { "defaults": { "unit": "bytes" } },
+      "targets": [{
+        "refId": "A",
+        "query": "from(bucket: \"ebpf_metrics\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"network_metrics\")\n  |> filter(fn: (r) => r._field == \"byte_count\")\n  |> aggregateWindow(every: v.windowPeriod, fn: sum, createEmpty: false)\n  |> yield(name: \"byte_count\")"
+      }]
+    },
+
+    {
+      "id": 8, "title": "Drop Count", "type": "timeseries",
+      "gridPos": { "x": 16, "y": 19, "w": 8, "h": 8 },
+      "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB}" },
+      "targets": [{
+        "refId": "A",
+        "query": "from(bucket: \"ebpf_metrics\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"network_metrics\")\n  |> filter(fn: (r) => r._field == \"drop_count\")\n  |> aggregateWindow(every: v.windowPeriod, fn: sum, createEmpty: false)\n  |> yield(name: \"drop_count\")"
+      }]
+    },
+
+    { "type": "row", "title": "Filesystem", "gridPos": { "x": 0, "y": 27, "w": 24, "h": 1 }, "id": 103, "collapsed": false },
+
+    {
+      "id": 9, "title": "I/O Operations", "type": "timeseries",
+      "gridPos": { "x": 0, "y": 28, "w": 8, "h": 8 },
+      "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB}" },
+      "targets": [{
+        "refId": "A",
+        "query": "from(bucket: \"ebpf_metrics\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"filesystem_metrics\")\n  |> filter(fn: (r) => r._field == \"io_operations\")\n  |> aggregateWindow(every: v.windowPeriod, fn: sum, createEmpty: false)\n  |> yield(name: \"io_operations\")"
+      }]
+    },
+
+    {
+      "id": 10, "title": "Bytes Transferred", "type": "timeseries",
+      "gridPos": { "x": 8, "y": 28, "w": 8, "h": 8 },
+      "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB}" },
+      "fieldConfig": { "defaults": { "unit": "bytes" } },
+      "targets": [{
+        "refId": "A",
+        "query": "from(bucket: \"ebpf_metrics\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"filesystem_metrics\")\n  |> filter(fn: (r) => r._field == \"bytes_transferred\")\n  |> aggregateWindow(every: v.windowPeriod, fn: sum, createEmpty: false)\n  |> yield(name: \"bytes_transferred\")"
+      }]
+    },
+
+    {
+      "id": 11, "title": "I/O Latency (us)", "type": "timeseries",
+      "gridPos": { "x": 16, "y": 28, "w": 8, "h": 8 },
+      "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB}" },
+      "fieldConfig": { "defaults": { "unit": "µs" } },
+      "targets": [{
+        "refId": "A",
+        "query": "from(bucket: \"ebpf_metrics\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"filesystem_metrics\")\n  |> filter(fn: (r) => r._field == \"io_latency_us\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> yield(name: \"io_latency_us\")"
+      }]
+    },
+
+    { "type": "row", "title": "Process", "gridPos": { "x": 0, "y": 36, "w": 24, "h": 1 }, "id": 104, "collapsed": false },
+
+    {
+      "id": 12, "title": "Process Count by State", "type": "timeseries",
+      "gridPos": { "x": 0, "y": 37, "w": 12, "h": 8 },
+      "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB}" },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"ebpf_metrics\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"process_metrics\")\n  |> filter(fn: (r) => r._field == \"running_count\" or r._field == \"sleeping_count\" or r._field == \"zombie_count\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> yield(name: \"process_states\")"
+        }
+      ]
+    },
+
+    {
+      "id": 13, "title": "Fork / Exec / Exit", "type": "timeseries",
+      "gridPos": { "x": 12, "y": 37, "w": 12, "h": 8 },
+      "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB}" },
+      "targets": [{
+        "refId": "A",
+        "query": "from(bucket: \"ebpf_metrics\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"process_metrics\")\n  |> filter(fn: (r) => r._field == \"fork_count\" or r._field == \"exec_count\" or r._field == \"exit_count\")\n  |> aggregateWindow(every: v.windowPeriod, fn: sum, createEmpty: false)\n  |> yield(name: \"lifecycle\")"
+      }]
+    },
+
+    { "type": "row", "title": "Syscall", "gridPos": { "x": 0, "y": 45, "w": 24, "h": 1 }, "id": 105, "collapsed": false },
+
+    {
+      "id": 14, "title": "Syscall Call Count (Top)", "type": "timeseries",
+      "gridPos": { "x": 0, "y": 46, "w": 12, "h": 8 },
+      "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB}" },
+      "targets": [{
+        "refId": "A",
+        "query": "from(bucket: \"ebpf_metrics\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"syscall_metrics\")\n  |> filter(fn: (r) => r._field == \"call_count\")\n  |> aggregateWindow(every: v.windowPeriod, fn: sum, createEmpty: false)\n  |> yield(name: \"call_count\")"
+      }]
+    },
+
+    {
+      "id": 15, "title": "Syscall Avg Latency (us)", "type": "timeseries",
+      "gridPos": { "x": 12, "y": 46, "w": 12, "h": 8 },
+      "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB}" },
+      "fieldConfig": { "defaults": { "unit": "µs" } },
+      "targets": [{
+        "refId": "A",
+        "query": "from(bucket: \"ebpf_metrics\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"syscall_metrics\")\n  |> filter(fn: (r) => r._field == \"avg_latency_us\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> yield(name: \"avg_latency_us\")"
+      }]
+    },
+
+    { "type": "row", "title": "Container", "gridPos": { "x": 0, "y": 54, "w": 24, "h": 1 }, "id": 106, "collapsed": false },
+
+    {
+      "id": 16, "title": "Container Memory Usage (%)", "type": "timeseries",
+      "gridPos": { "x": 0, "y": 55, "w": 12, "h": 8 },
+      "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB}" },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100 } },
+      "targets": [{
+        "refId": "A",
+        "query": "from(bucket: \"ebpf_metrics\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"container_metrics\")\n  |> filter(fn: (r) => r._field == \"memory_usage_percent\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> yield(name: \"memory_usage_percent\")"
+      }]
+    },
+
+    {
+      "id": 17, "title": "Container CPU Usage (ns)", "type": "timeseries",
+      "gridPos": { "x": 12, "y": 55, "w": 12, "h": 8 },
+      "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB}" },
+      "fieldConfig": { "defaults": { "unit": "ns" } },
+      "targets": [{
+        "refId": "A",
+        "query": "from(bucket: \"ebpf_metrics\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"container_metrics\")\n  |> filter(fn: (r) => r._field == \"cpu_usage_ns\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> yield(name: \"cpu_usage_ns\")"
+      }]
+    }
+
+  ],
+
+  "templating": {
+    "list": [
+      {
+        "name": "DS_INFLUXDB",
+        "type": "datasource",
+        "pluginId": "influxdb",
+        "label": "InfluxDB",
+        "hide": 0,
+        "current": {}
+      }
+    ]
+  }
+}

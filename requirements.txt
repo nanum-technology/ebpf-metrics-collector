@@ -1,0 +1,38 @@
+# eBPF & System
+# bcc==0.28.0
+pyroute2==0.7.12
+psutil==5.9.8
+
+# GPU 모니터링 (NVIDIA)
+nvidia-ml-py3==7.352.0
+
+# Data Processing
+pandas==2.1.4
+pyarrow==14.0.1
+numpy==1.26.2
+
+# Database
+influxdb-client==1.38.0
+python-dateutil==2.8.2
+
+# Async & Performance
+aiofiles==23.2.1
+asyncio==3.4.3
+uvloop==0.19.0
+
+# Compression
+zstandard==0.22.0
+lz4==4.3.2
+
+# Configuration
+pyyaml==6.0.1
+python-dotenv==1.0.0
+
+# Logging & Monitoring
+structlog==23.2.0
+prometheus-client==0.19.0
+
+# Testing
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0

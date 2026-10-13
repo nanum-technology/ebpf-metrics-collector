@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+venv/
+data/
+*.log
+config/config.local.yaml
