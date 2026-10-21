@@ -57,6 +57,17 @@ class BaseCollector(ABC):
             self.bpf.cleanup()
         logger.info("collector_stopped", collector=self.__class__.__name__)
 
+    # 프로세스 단위 집계 키 (memory·filesystem) — aggregate_by: "process_name"(기본) / "pid" (2026-10)
+    def proc_key_define(self) -> str:
+        """eBPF 프로그램 앞에 붙일 키 선택. pid 면 KEY_BY_PID 를 정의한다."""
+        return "#define KEY_BY_PID\n" if (self.config or {}).get("aggregate_by") == "pid" else ""
+
+    def proc_tags(self, key) -> Dict[str, str]:
+        """커널 맵 키(struct proc_key_t) → 태그. 프로세스 이름 모드는 process_name, pid 모드는 pid."""
+        if (self.config or {}).get("aggregate_by") == "pid":
+            return {"pid": str(key.pid)}
+        return {"process_name": key.comm.decode("utf-8", "replace") or "unknown"}
+
     def get_common_tags(self) -> Dict[str, str]:
         """공통 태그 반환"""
         return {

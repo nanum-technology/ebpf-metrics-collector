@@ -22,12 +22,13 @@ class NetworkCollector(BaseCollector):
       ICMP  : kprobe icmp_rcv(in) · __icmp_send(out, 패킷 수만)         (2026-10 추가)
       드롭  : tracepoint skb:kfree_skb — 노드 단위 합계
       DDoS  : 규칙 기반 — 수신 pps · 수신 출발지 IP 종류 수가 임계를 넘으면 노드 요약 레코드에 표시
+      임시 포트: ephemeral_port_min(기본 32768) 이상 포트는 커널 키에서 접어 태그 "eph" 로 (2026-10-13 — 시계열 폭증 대응)
     """
 
     PROTO_NAMES = {6: "TCP", 17: "UDP", 1: "ICMP"}
 
     def get_ebpf_program(self) -> str:
-        return """
+        return "#define EPH_MIN %d\n" % int(self.ephemeral_port_min) + """
 #include <uapi/linux/ptrace.h>
 #include <net/sock.h>
 #include <linux/tcp.h>
@@ -61,6 +62,15 @@ struct drop_stats_t {
 };
 BPF_HASH(drop_stats, u32, struct drop_stats_t);
 
+// 임시 포트(ephemeral port) 접기 — 커널 집계 키 단계에서 EPH_MIN 이상 포트를 0 으로 바꾼다.
+// 연결마다 새로 붙는 클라이언트 쪽 포트가 시계열을 폭증시키므로(하루 45만 → 153, 2026-10-13 측정),
+// 맵에 들어가기 전에 접어 맵 항목 수 · 사용자 공간 전달량 · DB 시계열 수를 함께 줄인다. EPH_MIN 0 이면 끈다.
+static inline void fold_ephemeral(struct conn_key_t *key) {
+    if (EPH_MIN == 0) return;
+    if (key->sport >= EPH_MIN) key->sport = 0;                    // host order
+    if (bpf_ntohs(key->dport) >= EPH_MIN) key->dport = 0;         // net order
+}
+
 static inline void fill_key(struct conn_key_t *key, struct sock *sk, u8 protocol, u8 direction) {
     bpf_probe_read_kernel(&key->saddr, sizeof(key->saddr), &sk->__sk_common.skc_rcv_saddr);
     bpf_probe_read_kernel(&key->daddr, sizeof(key->daddr), &sk->__sk_common.skc_daddr);
@@ -68,6 +78,7 @@ static inline void fill_key(struct conn_key_t *key, struct sock *sk, u8 protocol
     bpf_probe_read_kernel(&key->dport, sizeof(key->dport), &sk->__sk_common.skc_dport); // net order
     key->protocol = protocol;
     key->direction = direction;
+    fold_ephemeral(key);
 }
 
 // lookup_or_init 매크로는 실패 시 `return 0` 을 하므로 헬퍼는 int 를 돌려줘야 한다
@@ -122,6 +133,7 @@ TRACEPOINT_PROBE(tcp, tcp_retransmit_skb) {
     key.dport = bpf_htons(args->dport);
     key.protocol = 6;
     key.direction = 0;
+    fold_ephemeral(&key);
 
     struct conn_stats_t zero = {}, *stats;
     stats = conn_stats.lookup_or_init(&key, &zero);
@@ -219,6 +231,8 @@ TRACEPOINT_PROBE(skb, kfree_skb) {
         ddos = (config or {}).get("ddos", {}) or {}
         self.ddos_pps_threshold = float(ddos.get("inbound_pps_threshold", 20000))
         self.ddos_src_threshold = int(ddos.get("unique_src_threshold", 500))
+        # 임시 포트 접기 임계 — 이 값 이상 포트는 커널 키에서 0, 태그에서 "eph". 0 이면 끈다 (Linux 기본 임시 포트 32768~)
+        self.ephemeral_port_min = int((config or {}).get("ephemeral_port_min", 32768))
         self._last_collect_ts = None
         self.attached = []
 
@@ -239,6 +253,12 @@ TRACEPOINT_PROBE(skb, kfree_skb) {
                     raise
                 logger.warning("network_kprobe_optional_skipped", event=event, error=str(e))
         logger.info("network_kprobes_attached", events=self.attached)
+
+    def _port_tag(self, port: int) -> str:
+        """커널에서 접힌 임시 포트(0)는 "eph" 로. 접기를 끈 경우(ephemeral_port_min=0) 0 은 그대로."""
+        if port == 0 and self.ephemeral_port_min:
+            return "eph"
+        return str(port)
 
     @staticmethod
     def _ipv4(addr: int) -> str:
@@ -302,8 +322,8 @@ TRACEPOINT_PROBE(skb, kfree_skb) {
                         "direction": direction,
                         "src_ip": self._ipv4(k.saddr),
                         "dst_ip": self._ipv4(k.daddr),
-                        "sport": "" if is_icmp else str(k.sport),
-                        "dport": "" if is_icmp else str(socket.ntohs(k.dport)),
+                        "sport": "" if is_icmp else self._port_tag(k.sport),
+                        "dport": "" if is_icmp else self._port_tag(socket.ntohs(k.dport)),
                     },
                     "fields": fields,
                     "timestamp": timestamp

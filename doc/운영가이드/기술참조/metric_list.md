@@ -11,7 +11,7 @@
 | 재전송 횟수 | 구현 | `src/collectors/network_collector.py` | `tracepoint:tcp:tcp_retransmit_skb` → `retransmit_count` (2026-10) |
 | DDoS 트래픽 탐지 | 구현 | `src/collectors/network_collector.py` | 규칙 기반 — 수신 pps·출발지 종류 임계(`collectors.network.ddos`), 노드 요약 레코드 `ddos_detected` (2026-10) |
 | 프로토콜별 트래픽 (TCP, UDP, ICMP) | 구현 | `src/collectors/network_collector.py` | UDP(`udp_sendmsg`/`skb_consume_udp`) · ICMP(`icmp_rcv`/`__icmp_send`) 추가 (2026-10) |
-| 포트별 트래픽 | 구현 | `src/collectors/network_collector.py` | `sport`/`dport`/`src_ip`/`dst_ip` 태그 노출 (KETI 260529 문의 반영) |
+| 포트별 트래픽 | 구현 | `src/collectors/network_collector.py` | `sport`/`dport`/`src_ip`/`dst_ip` 태그 노출 (KETI 260529 문의 반영). 32768 이상 임시 포트는 `eph` 로 묶음 (2026-10-13) |
 | 수신(inbound) 트래픽 | 구현 | `src/collectors/network_collector.py` | `kprobe:tcp_cleanup_rbuf`, `direction=in/out` (2026-06 추가) |
 | 패킷 드롭 원인 분석 | 부분 구현 | `src/collectors/network_collector.py` | `kfree_skb` 추적만 |
 

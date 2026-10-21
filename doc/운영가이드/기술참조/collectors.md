@@ -30,6 +30,7 @@
 - `tracepoint:skb:kfree_skb` — 패킷 드롭 감지
 
 > 연결 4-tuple(src/dst IP·sport·dport) 단위로 집계하고 송·수신을 `direction`(in/out) 태그로 구분. ICMP 는 포트가 없어 `sport`/`dport` 가 빈 값.
+> **임시 포트 접기 (2026-10-13)** — `collectors.network.ephemeral_port_min`(기본 32768) 이상 포트는 커널 집계 키 단계에서 0 으로 접고 태그는 `eph` 로 낸다. 서비스 포트(예: 8086, 22)는 그대로 남는다. 연결마다 새로 붙는 클라이언트 포트가 시계열을 폭증시켜(하루 45만) InfluxDB 쓰기가 시간 초과로 실패했기 때문 — 접은 뒤 하루 153. 측정은 `scripts/cardinality_report.py`.
 > 매 주기 **노드 요약 레코드 1건**(`protocol=ALL`, `direction=in`) 에 드롭 수·수신 pps·출발지 종류·DDoS 판정을 싣는다.
 > UDP/ICMP 프로브는 선택 — 커널에 심볼이 없으면 경고만 남기고 TCP 수집은 계속된다 (`network_kprobe_optional_skipped`).
 
@@ -106,7 +107,9 @@
 | `sin_bytes` | int | Swap-in 바이트 |
 | `sout_bytes` | int | Swap-out 바이트 |
 
-**Tags**: `node_id`, `hostname`, `pid`, `memory_type`
+**Tags**: `node_id`, `hostname`, `process_name`, `memory_type`
+
+> eBPF 통계(`memory_type=kernel`)는 커널 맵에서 **프로세스 이름(comm) 단위로 집계**한다 (2026-10). `aggregate_by: pid` 로 두면 이전처럼 `pid` 태그.
 
 **eBPF 트레이스포인트**:
 - `kretprobe:kmalloc` — 커널 메모리 할당
@@ -138,7 +141,9 @@
 | `read_time_ms` / `write_time_ms` | int | 디바이스 읽기/쓰기 누적 시간 |
 | `total_bytes` / `used_bytes` / `free_bytes` / `usage_percent` | - | 마운트별 디스크 사용량 (psutil) |
 
-**Tags**: `node_id`, `hostname`, `ip`, `pid`, `operation`(read/write/block), `mount_point`, `filesystem_type`, `device`
+**Tags**: `node_id`, `hostname`, `ip`, `process_name`, `operation`(read/write/block), `mount_point`, `filesystem_type`, `device`
+
+> VFS 레코드(`operation=read/write`)는 커널 맵에서 **프로세스 이름(comm) 단위로 집계**한다 (2026-10). `aggregate_by: pid` 로 두면 이전처럼 `pid` 태그.
 
 **eBPF 트레이스포인트**:
 - `kprobe/kretprobe:vfs_read` — VFS 읽기 및 지연시간

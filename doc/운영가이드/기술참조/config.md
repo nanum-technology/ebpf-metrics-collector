@@ -109,6 +109,7 @@ logging:
 |----|------|
 | `interfaces` | 모니터링할 네트워크 인터페이스 목록 (현재 미사용 — 소켓 단위 집계) |
 | `protocols` | 모니터링할 프로토콜 (TCP/UDP/ICMP 모두 수집, 현재 필터로는 미사용) |
+| `ephemeral_port_min` | 이 값 이상 포트를 태그 `eph` 로 묶는다 (기본 32768 = Linux 임시 포트 시작). `0` 이면 끈다 — 끄면 연결마다 시계열이 생겨 InfluxDB 부하가 커진다 |
 | `ddos.inbound_pps_threshold` | 한 주기 수신 패킷/초가 넘으면 `ddos_detected=true` (기본 20000) |
 | `ddos.unique_src_threshold` | 한 주기 수신 출발지 IP 종류 수가 넘으면 `ddos_detected=true` (기본 500) |
 
@@ -129,12 +130,14 @@ logging:
 | 키 | 설명 |
 |----|------|
 | `track_oom` | OOM(Out of Memory) 이벤트 추적 여부 |
+| `aggregate_by` | 커널 집계 키. `process_name`(기본) 은 프로세스 이름 단위 — 태그 `process_name`. `pid` 는 프로세스 ID 단위(이전 동작) — 태그 `pid`. pid 는 재사용되며 계속 바뀌어 시계열이 하루 수십만 개 생긴다 (2026-10) |
 
 #### filesystem
 
 | 키 | 설명 |
 |----|------|
 | `mount_points` | 모니터링할 마운트 포인트 목록. 지정 시 해당 마운트만 수집, 비우면 squashfs(snap)·tmpfs·proc 등 가상/읽기전용 FS를 자동 제외 |
+| `aggregate_by` | VFS 레코드의 커널 집계 키 — memory 와 같다 (`process_name` 기본 / `pid`) |
 
 #### process
 

@@ -12,7 +12,7 @@ class MemoryCollector(BaseCollector):
     """메모리 메트릭 수집기"""
 
     def get_ebpf_program(self) -> str:
-        return """
+        return self.proc_key_define() + """
 #include <uapi/linux/ptrace.h>
 #include <linux/mm.h>
 #include <linux/sched.h>
@@ -36,7 +36,24 @@ struct mem_stats_t {
     u64 oom_count;
 };
 
-BPF_HASH(mem_stats, u32, struct mem_stats_t);
+// 집계 키 — 기본은 프로세스 이름(comm). KEY_BY_PID 가 정의되면 pid (2026-10 이전 동작)
+// pid 는 재사용되며 계속 바뀌어 하루 60만 시계열을 만들었다 (2026-10)
+struct proc_key_t {
+#ifdef KEY_BY_PID
+    u32 pid;
+#else
+    char comm[TASK_COMM_LEN];
+#endif
+};
+static inline void proc_key(struct proc_key_t *k) {
+#ifdef KEY_BY_PID
+    k->pid = bpf_get_current_pid_tgid() >> 32;
+#else
+    bpf_get_current_comm(&k->comm, sizeof(k->comm));
+#endif
+}
+
+BPF_HASH(mem_stats, struct proc_key_t, struct mem_stats_t);
 BPF_HASH(allocs, u64, u64);  // ptr -> size
 BPF_STACK_TRACE(stack_traces, 10240);
 BPF_PERF_OUTPUT(mem_events);
@@ -44,9 +61,11 @@ BPF_PERF_OUTPUT(mem_events);
 // kmalloc 추적
 int trace_kmalloc(struct pt_regs *ctx, size_t size) {
     u32 pid = bpf_get_current_pid_tgid() >> 32;
+    struct proc_key_t key = {};
+    proc_key(&key);
 
     struct mem_stats_t *stats, zero = {};
-    stats = mem_stats.lookup_or_init(&pid, &zero);
+    stats = mem_stats.lookup_or_init(&key, &zero);
     if (stats) {
         stats->kmalloc_count++;
         stats->kmalloc_bytes += size;
@@ -66,9 +85,10 @@ int trace_kmalloc(struct pt_regs *ctx, size_t size) {
 
 int trace_kmalloc_ret(struct pt_regs *ctx) {
     u64 ptr = PT_REGS_RC(ctx);
-    u32 pid = bpf_get_current_pid_tgid() >> 32;
+    struct proc_key_t key = {};
+    proc_key(&key);
 
-    struct mem_stats_t *stats = mem_stats.lookup(&pid);
+    struct mem_stats_t *stats = mem_stats.lookup(&key);
     if (stats && ptr != 0) {
         allocs.update(&ptr, &stats->kmalloc_bytes);
     }
@@ -78,11 +98,12 @@ int trace_kmalloc_ret(struct pt_regs *ctx) {
 
 // kfree 추적
 int trace_kfree(struct pt_regs *ctx, void *ptr) {
-    u32 pid = bpf_get_current_pid_tgid() >> 32;
+    struct proc_key_t key = {};
+    proc_key(&key);
     u64 addr = (u64)ptr;
 
     struct mem_stats_t *stats, zero = {};
-    stats = mem_stats.lookup_or_init(&pid, &zero);
+    stats = mem_stats.lookup_or_init(&key, &zero);
     if (stats) {
         stats->kfree_count++;
     }
@@ -95,10 +116,11 @@ int trace_kfree(struct pt_regs *ctx, void *ptr) {
 
 // 페이지 폴트 추적
 TRACEPOINT_PROBE(exceptions, page_fault_user) {
-    u32 pid = bpf_get_current_pid_tgid() >> 32;
+    struct proc_key_t key = {};
+    proc_key(&key);
 
     struct mem_stats_t *stats, zero = {};
-    stats = mem_stats.lookup_or_init(&pid, &zero);
+    stats = mem_stats.lookup_or_init(&key, &zero);
     if (stats) {
         stats->page_faults++;
     }
@@ -108,10 +130,11 @@ TRACEPOINT_PROBE(exceptions, page_fault_user) {
 
 // OOM (Out of Memory) 이벤트 추적
 TRACEPOINT_PROBE(oom, mark_victim) {
-    u32 pid = bpf_get_current_pid_tgid() >> 32;
+    struct proc_key_t key = {};
+    proc_key(&key);
 
     struct mem_stats_t *stats, zero = {};
-    stats = mem_stats.lookup_or_init(&pid, &zero);
+    stats = mem_stats.lookup_or_init(&key, &zero);
     if (stats) {
         stats->oom_count++;
     }
@@ -121,10 +144,11 @@ TRACEPOINT_PROBE(oom, mark_victim) {
 
 // Slab 메모리 추적
 TRACEPOINT_PROBE(kmem, kmem_cache_alloc) {
-    u32 pid = bpf_get_current_pid_tgid() >> 32;
+    struct proc_key_t key = {};
+    proc_key(&key);
 
     struct mem_stats_t *stats, zero = {};
-    stats = mem_stats.lookup_or_init(&pid, &zero);
+    stats = mem_stats.lookup_or_init(&key, &zero);
     if (stats) {
         stats->kmalloc_count++;
         stats->kmalloc_bytes += args->bytes_alloc;
@@ -146,13 +170,11 @@ TRACEPOINT_PROBE(kmem, kmem_cache_alloc) {
                 stats = self.bpf["mem_stats"]
 
                 for k, v in stats.items():
-                    pid = k.value
-
                     metric = {
                         "measurement": "memory_metrics",
                         "tags": {
                             **self.get_common_tags(),
-                            "pid": str(pid),
+                            **self.proc_tags(k),
                             "memory_type": "kernel"
                         },
                         "fields": {

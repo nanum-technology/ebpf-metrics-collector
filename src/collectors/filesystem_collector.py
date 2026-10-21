@@ -13,7 +13,7 @@ class FilesystemCollector(BaseCollector):
     """파일시스템 메트릭 수집기"""
 
     def get_ebpf_program(self) -> str:
-        return """
+        return self.proc_key_define() + """
 #include <uapi/linux/ptrace.h>
 #include <linux/fs.h>
 #include <linux/sched.h>
@@ -41,7 +41,24 @@ struct fs_stats_t {
     u64 unlink_count;      // 2026-10 추가
 };
 
-BPF_HASH(fs_stats, u32, struct fs_stats_t);
+// 집계 키 — 기본은 프로세스 이름(comm). KEY_BY_PID 가 정의되면 pid (2026-10 이전 동작)
+// pid 는 재사용되며 계속 바뀌어 하루 59만 시계열을 만들었다 (2026-10)
+struct proc_key_t {
+#ifdef KEY_BY_PID
+    u32 pid;
+#else
+    char comm[TASK_COMM_LEN];
+#endif
+};
+static inline void proc_key(struct proc_key_t *k) {
+#ifdef KEY_BY_PID
+    k->pid = bpf_get_current_pid_tgid() >> 32;
+#else
+    bpf_get_current_comm(&k->comm, sizeof(k->comm));
+#endif
+}
+
+BPF_HASH(fs_stats, struct proc_key_t, struct fs_stats_t);
 BPF_HASH(io_start, u64, u64);  // key: pid_tid, value: timestamp
 BPF_PERF_OUTPUT(io_events);
 
@@ -65,13 +82,14 @@ BPF_HASH(blk_start, struct blk_req_key_t, u64, 10240);   // 발행 시각 (dev, 
 int trace_vfs_read(struct pt_regs *ctx, struct file *file, 
                    char __user *buf, size_t count) {
     u64 pid_tid = bpf_get_current_pid_tgid();
-    u32 pid = pid_tid >> 32;
+    struct proc_key_t key = {};
+    proc_key(&key);
     u64 ts = bpf_ktime_get_ns();
 
     io_start.update(&pid_tid, &ts);
 
     struct fs_stats_t *stats, zero = {};
-    stats = fs_stats.lookup_or_init(&pid, &zero);
+    stats = fs_stats.lookup_or_init(&key, &zero);
     if (stats) {
         stats->read_count++;
     }
@@ -82,6 +100,8 @@ int trace_vfs_read(struct pt_regs *ctx, struct file *file,
 int trace_vfs_read_ret(struct pt_regs *ctx) {
     u64 pid_tid = bpf_get_current_pid_tgid();
     u32 pid = pid_tid >> 32;
+    struct proc_key_t key = {};
+    proc_key(&key);
 
     u64 *tsp = io_start.lookup(&pid_tid);
     if (!tsp) {
@@ -92,7 +112,7 @@ int trace_vfs_read_ret(struct pt_regs *ctx) {
     ssize_t ret = PT_REGS_RC(ctx);
 
     if (ret > 0) {
-        struct fs_stats_t *stats = fs_stats.lookup(&pid);
+        struct fs_stats_t *stats = fs_stats.lookup(&key);
         if (stats) {
             stats->read_bytes += ret;
             stats->total_latency_ns += latency;
@@ -117,13 +137,14 @@ int trace_vfs_read_ret(struct pt_regs *ctx) {
 int trace_vfs_write(struct pt_regs *ctx, struct file *file,
                     const char __user *buf, size_t count) {
     u64 pid_tid = bpf_get_current_pid_tgid();
-    u32 pid = pid_tid >> 32;
+    struct proc_key_t key = {};
+    proc_key(&key);
     u64 ts = bpf_ktime_get_ns();
 
     io_start.update(&pid_tid, &ts);
 
     struct fs_stats_t *stats, zero = {};
-    stats = fs_stats.lookup_or_init(&pid, &zero);
+    stats = fs_stats.lookup_or_init(&key, &zero);
     if (stats) {
         stats->write_count++;
     }
@@ -134,6 +155,8 @@ int trace_vfs_write(struct pt_regs *ctx, struct file *file,
 int trace_vfs_write_ret(struct pt_regs *ctx) {
     u64 pid_tid = bpf_get_current_pid_tgid();
     u32 pid = pid_tid >> 32;
+    struct proc_key_t key = {};
+    proc_key(&key);
 
     u64 *tsp = io_start.lookup(&pid_tid);
     if (!tsp) {
@@ -144,7 +167,7 @@ int trace_vfs_write_ret(struct pt_regs *ctx) {
     ssize_t ret = PT_REGS_RC(ctx);
 
     if (ret > 0) {
-        struct fs_stats_t *stats = fs_stats.lookup(&pid);
+        struct fs_stats_t *stats = fs_stats.lookup(&key);
         if (stats) {
             stats->write_bytes += ret;
             stats->total_latency_ns += latency;
@@ -167,10 +190,11 @@ int trace_vfs_write_ret(struct pt_regs *ctx) {
 
 // File open 추적
 TRACEPOINT_PROBE(syscalls, sys_enter_open) {
-    u32 pid = bpf_get_current_pid_tgid() >> 32;
+    struct proc_key_t key = {};
+    proc_key(&key);
 
     struct fs_stats_t *stats, zero = {};
-    stats = fs_stats.lookup_or_init(&pid, &zero);
+    stats = fs_stats.lookup_or_init(&key, &zero);
     if (stats) {
         stats->open_count++;
     }
@@ -180,10 +204,11 @@ TRACEPOINT_PROBE(syscalls, sys_enter_open) {
 
 // File close 추적
 TRACEPOINT_PROBE(syscalls, sys_enter_close) {
-    u32 pid = bpf_get_current_pid_tgid() >> 32;
+    struct proc_key_t key = {};
+    proc_key(&key);
 
     struct fs_stats_t *stats, zero = {};
-    stats = fs_stats.lookup_or_init(&pid, &zero);
+    stats = fs_stats.lookup_or_init(&key, &zero);
     if (stats) {
         stats->close_count++;
     }
@@ -194,9 +219,10 @@ TRACEPOINT_PROBE(syscalls, sys_enter_close) {
 // File unlink 추적 — unlink(2) 와 unlinkat(2) 둘 다 (glibc 의 unlink 는 unlinkat 으로 간다)
 // lookup_or_init 매크로는 실패 시 `return 0` 을 하므로 헬퍼는 int 를 돌려줘야 한다
 static inline int count_unlink(void) {
-    u32 pid = bpf_get_current_pid_tgid() >> 32;
+    struct proc_key_t key = {};
+    proc_key(&key);
     struct fs_stats_t *stats, zero = {};
-    stats = fs_stats.lookup_or_init(&pid, &zero);
+    stats = fs_stats.lookup_or_init(&key, &zero);
     if (stats) {
         stats->unlink_count++;
     }
@@ -298,7 +324,7 @@ TRACEPOINT_PROBE(block, block_rq_complete) {
                 stats = self.bpf["fs_stats"]
 
                 for k, v in stats.items():
-                    pid = k.value
+                    proc = self.proc_tags(k)
 
                     avg_latency = 0
                     if v.read_count + v.write_count > 0:
@@ -310,7 +336,7 @@ TRACEPOINT_PROBE(block, block_rq_complete) {
                             "measurement": "filesystem_metrics",
                             "tags": {
                                 **self.get_common_tags(),
-                                "pid": str(pid),
+                                **proc,
                                 "operation": "read"
                             },
                             "fields": {
@@ -330,7 +356,7 @@ TRACEPOINT_PROBE(block, block_rq_complete) {
                             "measurement": "filesystem_metrics",
                             "tags": {
                                 **self.get_common_tags(),
-                                "pid": str(pid),
+                                **proc,
                                 "operation": "write"
                             },
                             "fields": {

@@ -40,6 +40,9 @@ collectors:
     enabled: true
     interfaces: ["eth0", "eth1"]
     protocols: ["TCP", "UDP", "ICMP"]
+    # 임시 포트 접기 — 이 값 이상 포트는 태그 "eph" 로 묶는다 (커널 집계 키 단계). 0 이면 끈다.
+    # 클라이언트 쪽 포트가 연결마다 새 시계열을 만들어 InfluxDB 를 압박했다 (하루 45만 → 153, 2026-10-13)
+    ephemeral_port_min: 32768
     # DDoS 판정 (규칙 기반) — 한 주기의 수신 패킷/초 또는 수신 출발지 IP 종류 수가 넘으면
     # 노드 요약 레코드(protocol=ALL) 의 ddos_detected=true. 값은 노드 트래픽을 보고 조정한다
     ddos:
@@ -57,10 +60,14 @@ collectors:
   memory:
     enabled: true
     track_oom: true
+    # 커널 집계 키 — process_name(기본) 은 프로세스 이름 단위, pid 는 프로세스 ID 단위(이전 동작)
+    # pid 는 재사용되며 계속 바뀌어 하루 60만 시계열을 만들었다 → 이름 단위로 수백 개 (2026-10)
+    aggregate_by: "process_name"
 
   filesystem:
     enabled: true
     mount_points: ["/", "/data"]
+    aggregate_by: "process_name"   # memory 와 같다
 
   process:
     enabled: true

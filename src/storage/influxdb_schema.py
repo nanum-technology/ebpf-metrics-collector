@@ -92,12 +92,13 @@ INFLUXDB_SCHEMA = {
         },
     },
 
-    # 4. 메모리 — eBPF(pid 단위 kernel) + psutil(physical/swap)
+    # 4. 메모리 — eBPF(프로세스 이름 단위 kernel) + psutil(physical/swap)
     "memory_metrics": {
         "tags": {
             **COMMON_TAGS,
             "memory_type": "kernel / physical / swap",
-            "pid": "프로세스 ID (memory_type=kernel 만)",
+            "process_name": "프로세스 이름 (memory_type=kernel 만, 기본 집계 키)",
+            "pid": "프로세스 ID (memory_type=kernel 만, aggregate_by: pid 일 때)",
         },
         "fields": {
             "kmalloc_count": "int64 - kmalloc + kmem_cache_alloc 횟수",
@@ -117,11 +118,12 @@ INFLUXDB_SCHEMA = {
         },
     },
 
-    # 5. 파일시스템 — eBPF(pid 단위 VFS) + psutil(마운트 사용량·디스크 I/O) + 블록 레이어
+    # 5. 파일시스템 — eBPF(프로세스 이름 단위 VFS) + psutil(마운트 사용량·디스크 I/O) + 블록 레이어
     "filesystem_metrics": {
         "tags": {
             **COMMON_TAGS,
-            "pid": "프로세스 ID (VFS 레코드)",
+            "process_name": "프로세스 이름 (VFS 레코드, 기본 집계 키)",
+            "pid": "프로세스 ID (VFS 레코드, aggregate_by: pid 일 때)",
             "operation": "read / write (VFS) · block (블록 레이어)",
             "mount_point": "마운트 지점 (사용량 레코드)",
             "filesystem_type": "파일시스템 타입 (사용량 레코드)",
