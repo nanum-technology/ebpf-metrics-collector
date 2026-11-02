@@ -1,5 +1,8 @@
 # eBPF Metrics Collector
 
+[![CI](https://github.com/nanum-technology/ebpf-metrics-collector/actions/workflows/ci.yml/badge.svg)](https://github.com/nanum-technology/ebpf-metrics-collector/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 Linux 커널 eBPF 로 스토리지 노드의 핵심 자원 메트릭을 수집해 InfluxDB 와 로컬 계층 저장소(JSONL → Parquet → Zstd)에
 적재하는 모니터링 에이전트입니다. 애플리케이션이나 커널을 고치지 않고 tracepoint / kprobe 에 프로그램을 붙여
 네트워크 · 시스템 콜 · CPU · 메모리 · 파일시스템 · 프로세스 · 컨테이너 7개 영역을 10초 주기로 모읍니다 (GPU 는 NVML).
@@ -66,6 +69,19 @@ Before running `scripts/setup_master.sh`, set `INFLUX_PASSWORD` and `GRAFANA_PAS
 | [Metric list](doc/운영가이드/기술참조/metric_list.md) | implementation status of every metric |
 | [Storage](doc/운영가이드/기술참조/storage.md) | InfluxDB schema and tiered file layout |
 | [Troubleshooting](doc/운영가이드/troubleshooting.md) | common failures |
+| [Changelog](CHANGELOG.md) | notable changes, newest first |
+
+## Testing
+
+The eBPF collectors need a Linux node with root and bcc. Everything else — schema validation, the tiered local
+store and the cardinality report — is unit-tested and runs anywhere:
+
+```bash
+pip install -r tests/requirements.txt
+python -m pytest tests
+```
+
+CI runs these tests on Python 3.10–3.12, plus `bash -n` on the shell scripts, for every push and pull request.
 
 ## Layout
 
@@ -75,9 +91,15 @@ config/config.yaml      configuration
 src/collectors/         network, syscall, cpu, memory, filesystem, process, container, gpu
 src/storage/            influxdb_schema (schema + validator), influxdb_writer, tiered_storage, file_writer
 src/utils/              node_info, logger
-scripts/                setup_master.sh, setup_agent.sh, systemd unit, Grafana dashboard
+scripts/                setup_master.sh, setup_agent.sh, systemd unit, Grafana dashboard, cardinality_report.py
+tests/                  unit tests (no eBPF or root needed)
 doc/                    manuals (Korean)
 ```
+
+## Contributing
+
+Issues and pull requests are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
+Please report security problems privately as described in [SECURITY.md](SECURITY.md).
 
 ## Acknowledgement
 
