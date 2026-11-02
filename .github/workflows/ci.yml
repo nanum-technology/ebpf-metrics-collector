@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: tests/requirements.txt
+      - name: Install test dependencies
+        run: pip install -r tests/requirements.txt
+      - name: Byte-compile every module
+        run: python -m compileall -q main.py src scripts tests
+      - name: Validate shipped config and dashboard
+        run: |
+          python -c "import yaml; yaml.safe_load(open('config/config.yaml', encoding='utf-8'))"
+          python -c "import json; json.load(open('scripts/dashboard.json', encoding='utf-8'))"
+      - name: Unit tests
+        run: python -m pytest tests -q
+
+  shell:
+    name: Shell syntax
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: bash -n
+        run: |
+          for f in run.sh setup_environment.sh scripts/*.sh; do
+            bash -n "$f" && echo "ok  $f"
+          done
